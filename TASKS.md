@@ -128,7 +128,7 @@ Scaffold, `.gitignore`, and `pyproject.toml` are already in place (built by
 
 ## Phase 3 — Random Forest
 
-- [ ] **3.1** `models/forest.py` — RF on media + controls, season holdout,
+- [x] **3.1** `models/forest.py` — RF on media + controls, season holdout,
       light hyperparameter search.
       *Verify:* `scripts/fit_forest.py` prints in-sample and holdout MAPE, R²
 

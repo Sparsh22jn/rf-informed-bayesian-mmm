@@ -254,3 +254,34 @@ Tentpole-tier leverage: `championship` events average 1885 (thousand)
 viewers on 3.7% of events but 4.8% of total viewership, vs `regular`'s 1354
 average on 74% of events and 70.2% of total viewership -- visible confound,
 not yet corrected for.
+
+---
+
+## 2026-07-31 — Task 3.1: `models/forest.py`
+
+RF features are the *observed* `spend_*` columns (raw dollars as an
+analyst would see them), never the DGP's internal adstocked/diluted
+exposure -- `events.parquet` carries `mu` and `contrib_*` ground-truth
+columns for scoring purposes (per `CLAUDE.md`'s "only tests and evaluation
+scripts" carve-out), but `build_features()` deliberately excludes all of
+them from the model's inputs. "Season holdout" read literally: train on
+seasons 0-1, hold out season 2 entirely, distinct from Phase 5's later
+random/temporal split schemes.
+
+Real finding, not a bug: holdout MAPE (6.6%, seed 0) comes in *below* the
+irreducible MAPE floor for that same season (10.6%) -- confirmed
+consistent across four seeds (RF holdout MAPE 6.6-9.0% vs floor 10.1-12.6%
+each time), so not a fluke. Traced it rather than shipping the number
+uncommented: MAPE's denominator is the observed `y`, not the true `mu`, and
+is therefore most sensitive exactly where a large negative noise draw made
+`y` small. At the five smallest-`y` holdout points, RF's prediction sits
+notably *below* `mu` (e.g. `mu`=1069, RF predicted 843, actual y=749) --
+not because it detected the noise, but because RF's leaf predictions are
+finite-sample averages of *noisy* training `y`, not the true conditional
+mean, so in sparser regions of feature space RF's own estimation noise can
+happen to land closer to a specific holdout noise realization than the
+unbiased `mu` does. `fit_forest.py` now prints the floor next to every
+MAPE (per `DESIGN.md §4`'s instruction, missed in the first pass) with an
+explanatory note whenever a model's MAPE comes in under it, so this doesn't
+read as the model having beaten irreducible noise anywhere else in the repo
+either.

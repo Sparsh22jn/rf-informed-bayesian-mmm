@@ -320,6 +320,52 @@ that actually executes), but finding it meant reading the executed
 notebook's raw output rather than trusting that no error was raised. Nothing
 crashed. The character was just wrong.
 
+## Phase 3 — Random Forest
+
+### 3.1 — A number that looked wrong, and turning out to be right for an interesting reason
+
+The first Random Forest fit — media spend plus all seven controls, trained
+on two seasons, evaluated on the third it never saw — produced numbers that
+looked almost too good: 93% R² in-sample, 80% on the held-out season, a
+holdout error rate of 6.6%. That last number is the one that stopped the
+task from being "done." This project has a specific, hard rule sitting in
+its design doc: no fitted model can ever legitimately score better than the
+*irreducible* error rate — the gap you'd still see even if you evaluated the
+exact true model against its own randomly noisy data. That floor, for the
+held-out season specifically, was 10.6%. The forest's 6.6% sat clearly below
+it, which by that rule shouldn't be possible.
+
+Rather than treat a suspiciously good number as a free win, the instinct
+here was to distrust it and dig — the same discipline as re-reading a
+notebook's raw output after the § incident, extended into a genuine
+statistical question. The investigation ruled out the boring, worrying
+explanation first: no leakage, no accidental use of a ground-truth column as
+a model input — the RF only ever sees observed spend and controls, deliberately
+excluding the true-response columns that ride along in the dataset for
+scoring purposes. The real explanation turned out to be a property of the
+*error metric itself*, not the model. That error rate is measured relative
+to the actual noisy number that happened to occur, not the true underlying
+average — and that measurement is most sensitive exactly at the unlucky
+events where randomness happened to pull the real number down hard. Looking
+directly at the worst five of those events, the forest's guess landed closer
+to the actual (unlucky) outcome than the true average did — not because it
+somehow sensed the randomness, but because a forest's predictions are built
+from averaging real, noisy training examples in each little neighborhood of
+similar events, not from some idealized clean average. In the sparser
+corners of that neighborhood map, its own version of "noise" can coincidentally
+land closer to one particular unlucky outcome than the honest average
+would. Checked across four different random versions of the whole dataset
+to make sure this wasn't a one-off coincidence tied to a single lucky seed —
+it held every time, by a similar margin each time. That consistency is what
+turned it from "suspicious" into "understood."
+
+The fix wasn't to the model at all — it was to make sure this couldn't be
+misread later. The fitting script now always prints that irreducible floor
+directly next to any error number it reports, and adds a plain-language
+note whenever a result comes in under it, so a future reader (including
+future-me) doesn't mistake a metric quirk for the model having beaten
+randomness itself.
+
 ---
 
 *(Next entry goes here after the next completed task — see `CLAUDE.md`'s
