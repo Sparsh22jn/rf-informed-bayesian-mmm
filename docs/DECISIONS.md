@@ -213,3 +213,44 @@ SHA-256 checksums (`906b88c5...`) each time — including catching that
 `make data` requires the venv activated first (it invokes plain `python`,
 which isn't the issue `make` surfaced, just a reminder to activate before
 running it; not a code change).
+
+---
+
+## 2026-07-31 — Task 2.1: `notebooks/01_eda.ipynb`
+
+`ipykernel` was missing from dev dependencies -- `nbconvert --execute` needs
+a real kernel, not just the conversion library. Added to `pyproject.toml`
+and registered a project-specific kernelspec (`mmm-sports-venv`) rather than
+relying on whatever default `python3` kernel happens to exist on a given
+machine, so the notebook's execution environment is pinned same as
+everything else in this repo.
+
+Always-on spend is *regenerated* in the notebook (`generate_alwayson_spend`,
+same seed) rather than read from the event-level parquet, since the parquet
+only has spend at the days events actually happened -- plotting only those
+points would misrepresent the flighting pattern entirely (most calendar
+days aren't event days). Event-targeted spend, by contrast, is genuinely
+event-level, so it's read straight from the parquet.
+
+`check_eda.py` parses a `Baseline share: XX.X%` line out of the notebook's
+captured stream output via `nbconvert` + `nbformat`, rather than requiring
+the notebook to write a separate machine-readable file -- keeps the
+notebook itself the single source of truth for both the human-facing report
+and the machine-checkable assertion.
+
+One real bug caught in review, not by the tests: a `§` character (used in
+"DESIGN.md §4") came out corrupted (`�`) in one printed string, apparently a
+Windows console encoding issue somewhere between the kernel process and
+nbconvert's output capture -- interestingly, the same character survived
+fine in markdown cells, only a `print()`-ed one was affected. Fixed by
+avoiding non-ASCII symbols in printed output ("section 4" instead of "§4");
+markdown prose can keep using `§` since it isn't routed through the kernel's
+stdout stream.
+
+Diagnostics from `DESIGN.md`'s 2.1 spec: always-on zero-spend inflation
+came out `tv_linear` 65.8%, `display` 53.2%, `out_of_home` 26.7% -- exactly
+the ordering the flighting parameters in task 1.6 were built to produce.
+Tentpole-tier leverage: `championship` events average 1885 (thousand)
+viewers on 3.7% of events but 4.8% of total viewership, vs `regular`'s 1354
+average on 74% of events and 70.2% of total viewership -- visible confound,
+not yet corrected for.

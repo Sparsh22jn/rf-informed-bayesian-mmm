@@ -108,7 +108,7 @@ Scaffold, `.gitignore`, and `pyproject.toml` are already in place (built by
 
 ## Phase 2 — EDA
 
-- [ ] **2.1** `notebooks/01_eda.ipynb` — viewership distribution, spend over
+- [x] **2.1** `notebooks/01_eda.ipynb` — viewership distribution, spend over
       time, both mechanisms illustrated, baseline dominance made visible.
       Also print three diagnostic checks (not data treatment — this is
       synthetic ground truth, and the high-viewership tentpole events are

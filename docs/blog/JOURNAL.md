@@ -279,6 +279,47 @@ truth, both spend mechanisms, controls, and the assembled response — now
 exists, is internally consistent with its own design targets, and is
 provably reproducible from a single seed.
 
+## Phase 2 — Looking at the world that got built
+
+### 2.1 — The first real notebook, and a character that didn't survive the trip
+
+Everything through Phase 1 was numbers printed to a terminal. This task was
+the first time any of it became a picture — an actual Jupyter notebook
+(`notebooks/01_eda.ipynb`), not a script, so the plots live as real cell
+output someone can open and scroll through, not just files dropped on disk
+as a side effect.
+
+Running a notebook headlessly (so a check script can verify it, not just a
+human eyeballing it once) needed one missing piece: `ipykernel`, which
+hadn't been added as a dependency because nothing had needed to *execute* a
+notebook yet, only convert one. Once that was in, the notebook got its own
+registered kernel rather than depending on whatever `python3` kernel
+happened to already exist on a machine — the same instinct as pinning any
+other dependency.
+
+One good habit paid off immediately: actually opening the rendered figures
+instead of trusting that "the script exited 0" meant they looked right. The
+always-on spend chart shows exactly what task 1.6 was built to produce —
+`tv_linear` spiking on and off in bursts, `out_of_home` sitting almost flat
+and continuous, both dropping to a clean zero during the off-season gaps.
+The event-targeted scatter, colored by tentpole tier, makes the project's
+central confound visible at a glance: the darkest dots (championship-tier
+games) visibly float above the rest across all three channels, exactly the
+pattern that will later fool a naive attribution model in Phase 3. Seeing
+that shape appear in an actual chart landed differently than reading the
+correlation number in task 1.7's terminal output.
+
+Also caught something no test would have flagged: a `§` character in one
+printed diagnostic line came out of the notebook's execution as a garbled
+replacement character. Same symbol, used the same way, was fine everywhere
+it appeared in plain markdown text — only the one routed through a live
+kernel's `print()` output got mangled, apparently a Windows console
+encoding quirk in how the kernel process's stdout gets captured. The fix
+was small (spell out "section 4" instead of using the symbol in anything
+that actually executes), but finding it meant reading the executed
+notebook's raw output rather than trusting that no error was raised. Nothing
+crashed. The character was just wrong.
+
 ---
 
 *(Next entry goes here after the next completed task — see `CLAUDE.md`'s
