@@ -1,7 +1,8 @@
 # Local working material — never committed
 reference/
 artifacts/
-data/generated/
+data/generated/*
+!data/generated/events.parquet
 docs/denylist.txt
 
 # Python

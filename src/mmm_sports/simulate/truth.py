@@ -82,12 +82,12 @@ TRUTH = Truth(
         "paid_search": 1.6,
     },
     beta={
-        "tv_linear": 650.0,
-        "out_of_home": 180.0,
-        "display": 5.0,  # near-zero true effect -- the "dead channel" pathology
-        "ctv": 220.0,
-        "paid_social": 140.0,
-        "paid_search": 260.0,
+        "tv_linear": 235.0,
+        "out_of_home": 65.0,
+        "display": 2.0,  # near-zero true effect -- the "dead channel" pathology
+        "ctv": 60.0,
+        "paid_social": 40.0,
+        "paid_search": 70.0,
     },
     control_beta={
         "tv_availability": 80.0,
@@ -104,7 +104,7 @@ TRUTH = Truth(
         "streaming_exclusive": -120.0,
     },
     season_intercept=(900.0, 950.0, 1000.0),
-    sigma=150.0,
+    sigma=190.0,
 )
 
 assert set(TRUTH.broadcaster_beta) == set(BROADCASTERS)

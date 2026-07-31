@@ -89,13 +89,13 @@ Scaffold, `.gitignore`, and `pyproject.toml` are already in place (built by
       exceeds threshold **and** that event-targeted spend rises monotonically
       with tier
 
-- [ ] **1.8** **Seven** control variables per `DESIGN.md §3`, including
+- [x] **1.8** **Seven** control variables per `DESIGN.md §3`, including
       `tentpole_tier` as a direct effect on `mu` and `broadcaster` as a nominal
       4-level categorical (per-level coefficients, not an ordinal slope).
       *Verify:* `check_controls.py` prints distributions, the correlation matrix,
       and mean viewership by broadcaster level and by tentpole tier
 
-- [ ] **1.9** `simulate/dgp.py` — assemble the response through the full
+- [x] **1.9** `simulate/dgp.py` — assemble the response through the full
       two-mechanism pipeline. Tune until contribution shares hit the
       `DESIGN.md §4` targets.
       *Verify:* `scripts/simulate_data.py` writes `data/generated/events.parquet`;
@@ -103,7 +103,7 @@ Scaffold, `.gitignore`, and `pyproject.toml` are already in place (built by
       and prints the **irreducible MAPE floor** — the true model scored against
       its own output (`DESIGN.md §4`). Every later MAPE is read against this.
 
-- [ ] **1.10** Commit a data sample; make the full set reproducible from seed.
+- [x] **1.10** Commit a data sample; make the full set reproducible from seed.
       *Verify:* fresh clone + `make data` reproduces byte-identical output
 
 ## Phase 2 — EDA

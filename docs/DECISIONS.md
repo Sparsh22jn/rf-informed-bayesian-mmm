@@ -142,3 +142,74 @@ pushed the realized correlation as low as 0.40 by swamping it with
 tier-driven variance unrelated to TV spend. Landed on ~0.54, stable across
 seeds, with threshold set to 0.5 and tier concentration still clearly
 monotonic (~3.2x regular to championship).
+
+---
+
+## 2026-07-30 — Task 1.8: `simulate/controls.py`
+
+Only 4 of the 7 controls needed new generation code — `broadcaster`,
+`is_weekend`, and `tentpole_tier` already exist in `schedule.py` since
+they're intrinsic to the event itself, not separately observed signals.
+`team_interest`/`star_interest` are AR(1) latents smoothed with a 28-day
+rolling mean; the first attempt used `rho=0.98` and produced a ~0.7
+correlation with `tv_availability`'s seasonal cosine pattern in
+`check_controls.py`'s printed matrix — not a deliberate confound, just a
+near-unit-root process drifting slowly enough to spuriously track any other
+slow-moving series over a finite sample. Dropped to `rho=0.8`, confirmed
+against several seeds that the resulting correlation isn't just smaller but
+actually changes sign run to run (-0.18 to +0.40), which is the signature of
+ordinary finite-sample noise rather than a structural leak.
+
+All 6 scalar controls get MinMax[0,1] scaling and `broadcaster` gets its
+per-level vector in `dgp.py` (1.9), not here — `controls.py` only produces
+the 4 new controls at raw, human-interpretable scale.
+
+---
+
+## 2026-07-30 — Task 1.9: `simulate/dgp.py`
+
+This is where `truth.py`'s β/control_beta/season_intercept — explicitly
+left as untuned placeholders back in task 1.2 — actually got calibrated
+against `DESIGN.md §4`'s contribution-share targets. First run (with the
+original placeholder betas) came out at baseline 51% / controls 16% /
+always-on 16% / event-targeted 17%, against targets of 60-70% / 15-25% /
+5-10% / 3-8% — controls were already fine, but media was contributing
+roughly double what it should have and baseline was correspondingly
+crowded out.
+
+Because `hill_saturation`'s output doesn't depend on β at all (only K and
+S), each channel's mean contribution scales exactly linearly with its β —
+so hitting the target absolute contribution for the always-on bucket and the
+event-targeted bucket was a matter of computing the needed scale factor
+(0.359 and 0.278 respectively) and applying it uniformly within each
+bucket, preserving the relative proportions already set between channels.
+Landed on `tv_linear=235, out_of_home=65, display=2` (always-on) and
+`ctv=60, paid_social=40, paid_search=70` (event-targeted) — stable across
+four seeds: baseline 65.7-67.6%, controls 19.4-20.8%, always-on 6.7-7.5%,
+event-targeted 5.9-6.1%, all inside band.
+
+`sigma` similarly needed retuning for the §4 noise-floor target (true model
+scored against its own output, 10-12% MAPE): 150 produced ~8.8%, scaled up
+to 190 to land at ~11.3-11.5% across the same four seeds.
+
+`extract_event_level`'s dilution and `geometric_adstock`'s carryover are
+applied to always-on channels before Hill saturation; event-targeted
+channels go straight to Hill saturation, no adstock — matching the
+DESIGN.md §4 pipeline exactly, not a simplified version of it.
+
+---
+
+## 2026-07-30 — Task 1.10: commit a data sample
+
+`.gitignore`'s blanket `data/generated/` rule changed to `data/generated/*`
+plus a `!data/generated/events.parquet` exception, rather than removing the
+ignore rule entirely — every other seed/variant someone generates locally
+stays untracked, only the deterministic seed=0 default output is committed.
+
+Reproducibility verified directly rather than by asserting it in a test:
+regenerated the file three times (twice via the script directly, once via
+`make data` through the actual Makefile target) and confirmed identical
+SHA-256 checksums (`906b88c5...`) each time — including catching that
+`make data` requires the venv activated first (it invokes plain `python`,
+which isn't the issue `make` surfaced, just a reminder to activate before
+running it; not a code change).

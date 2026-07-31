@@ -14,6 +14,7 @@ import pandas as pd
 N_SEASONS = 3
 SEASON_LENGTH_DAYS = 200
 OFFSEASON_GAP_DAYS = 90
+CALENDAR_START = pd.Timestamp("2021-09-01")
 TARGET_EVENTS_PER_SEASON = 250
 CLUSTER_WEEK_FRACTION = 0.18
 CLUSTER_MULTIPLIER = 2.0
@@ -71,18 +72,17 @@ def generate_schedule(seed: int, n_seasons: int = N_SEASONS) -> pd.DataFrame:
         attention across simultaneous broadcasts).
     """
     rng = np.random.default_rng(seed)
-    calendar_start = pd.Timestamp("2021-09-01")
     season_stride = SEASON_LENGTH_DAYS + OFFSEASON_GAP_DAYS
 
     rows = []
     for season in range(n_seasons):
-        season_start = calendar_start + pd.Timedelta(days=season * season_stride)
+        season_start = CALENDAR_START + pd.Timedelta(days=season * season_stride)
         for date in _season_dates(season_start, rng):
             rows.append({"season": season, "date": date})
 
     df = pd.DataFrame(rows).sort_values(["date"]).reset_index(drop=True)
     df["event_id"] = df.index
-    df["day_idx"] = (df["date"] - calendar_start).dt.days
+    df["day_idx"] = (df["date"] - CALENDAR_START).dt.days
     df["is_weekend"] = df["date"].dt.weekday.isin([5, 6])
 
     n_events = len(df)

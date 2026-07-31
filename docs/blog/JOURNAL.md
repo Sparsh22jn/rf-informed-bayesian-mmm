@@ -199,6 +199,86 @@ across seeds while keeping the tier concentration still clearly monotonic.
 Neither property got sacrificed for the other; it just took finding the
 right operating point where both hold at once.
 
+### 1.8 / 1.9 — The seven controls, and where the whole world finally gets stitched together
+
+These two landed in the same sitting rather than one at a time, since 1.8's
+own verify script needs actual simulated viewership to print — and
+viewership doesn't exist until 1.9's assembly step exists. Doing them
+together also made the dependency honest instead of working around it.
+
+Three of the seven controls (`broadcaster`, `is_weekend`, `tentpole_tier`)
+already existed from the calendar work back in 1.1 — they're intrinsic to
+an event, not separately observed signals, so there was nothing new to
+generate. The four that were new — `tv_availability` (a seasonal viewing
+index), `team_interest` and `star_interest` (rolling 4-week indices), and
+`competitiveness` (game margin) — surfaced one more case of an AR(1)
+process drifting too slowly for its own good: `team_interest`'s first
+version used a near-unit-root decay rate that let it wander slowly enough
+to spuriously track `tv_availability`'s seasonal shape, producing a
+coincidental 0.7 correlation between two variables that were never supposed
+to be related. Confirmed it was noise rather than a real link by checking
+whether the correlation's *sign* held across different random seeds — it
+didn't (it ranged from -0.18 to +0.40), which is exactly the fingerprint of
+a spurious correlation rather than a structural one. Slowing the process
+down (a smaller decay rate) fixed it.
+
+Then came the part that ties every earlier piece together: `simulate/dgp.py`
+takes the calendar, the true parameters, both spend mechanisms, and the
+controls, and actually produces a number — viewership. Always-on spend gets
+adstocked over calendar time, diluted at multi-event days, then passed
+through Hill saturation; event-targeted spend skips straight to Hill
+saturation, no carryover. Every scalar control gets rescaled to [0,1] and
+multiplied by its coefficient; `broadcaster` adds its own per-level effect;
+a season intercept anchors the baseline; Gaussian noise sits on top.
+
+This is also where the placeholder truth parameters set back in task 1.2 —
+explicitly flagged at the time as "order of magnitude, not tuned" — finally
+had something real to be tuned against. The first full run split response
+into roughly 51% baseline, 16% controls, 16% always-on media, and 17%
+event-targeted media, against DESIGN.md's target bands of 60-70% / 15-25% /
+5-10% / 3-8% — media was contributing roughly twice what it should have. The
+fix turned out to be simple once noticed: Hill saturation's output doesn't
+depend on the channel coefficient at all, only on the spend and the shape
+parameters, so a channel's mean contribution scales *exactly* linearly with
+its coefficient. That meant hitting the target wasn't a search — it was
+computing the one scale factor each media bucket needed and applying it
+uniformly, which preserves how the channels sit relative to each other
+while moving the bucket as a whole. Landed on shares that hold consistently
+across seeds: baseline in the mid-60s, controls around 20%, always-on
+around 7%, event-targeted around 6% — all inside band. The noise level
+needed the same kind of check: the *true* model, scored against the data it
+generated itself, is supposed to land at a 10-12% MAPE floor (the number
+every later model's own MAPE gets read against) — the original noise
+setting produced under 9%, so it went up until the floor actually landed
+where DESIGN.md said it should.
+
+### 1.10 — Proving reproducibility instead of assuming it
+
+The last piece of Phase 1 wasn't new generation logic, just a promise worth
+actually checking: that the entire pipeline, given the same seed, produces
+byte-for-byte the same file every time. Rather than trust that and move on,
+the file got regenerated three separate times — twice by calling the
+generation script directly, once through the project's actual `make data`
+command — and all three runs produced the identical SHA-256 checksum. Along
+the way, running `make data` directly surfaced a small reminder rather than
+a bug: the command relies on the project's virtual environment being
+active, and typing it in a fresh terminal without doing that first fails
+with a missing-package error that has nothing to do with the data pipeline
+itself.
+
+One small piece of `.gitignore` housekeeping came with this: the whole
+`data/generated/` folder was ignored outright, but the project's own design
+calls for committing one concrete sample so someone browsing the repo can
+see real output without running anything. Rather than stop ignoring the
+folder entirely, the ignore rule got a single carved-out exception for
+exactly that one deterministic file — every other seed or variant a future
+run produces locally stays out of the repo, same as before.
+
+That closes out Phase 1: the entire synthetic world — calendar, ground
+truth, both spend mechanisms, controls, and the assembled response — now
+exists, is internally consistent with its own design targets, and is
+provably reproducible from a single seed.
+
 ---
 
 *(Next entry goes here after the next completed task — see `CLAUDE.md`'s
