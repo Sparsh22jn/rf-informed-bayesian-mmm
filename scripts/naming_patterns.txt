@@ -1,0 +1,13 @@
+# Regexes matching old-codebase / client naming conventions.
+# These are shape patterns, not client identifiers — safe to commit and run in CI.
+# One regex per line. Lines starting with # are comments.
+
+[A-Z][A-Z0-9_]+\.[A-Z0-9_]+\.[A-Z0-9_]+
+BRAND_CH_\d+
+TUNEIN_CH_\d+
+CTRL_\d+
+PAID_[A-Z_]+_(BRAND|TUNE_IN)
+ACG_
+GAME_MASTER
+DAILY_IDX
+SEASON_TYPE_IDX

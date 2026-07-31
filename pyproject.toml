@@ -1,0 +1,24 @@
+[project]
+name = "mmm-sports"
+version = "0.1.0"
+description = "MMM for live-event viewership on synthetic data"
+requires-python = ">=3.11"
+dependencies = [
+  "numpy", "pandas", "pyarrow", "scipy",
+  "scikit-learn", "shap",
+  "pymc", "pymc-marketing", "arviz",
+  "matplotlib", "streamlit",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "nbconvert", "ruff"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,22 @@
+# Local working material — never committed
+reference/
+artifacts/
+data/generated/
+docs/denylist.txt
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Notebook outputs
+*.nbconvert.ipynb
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

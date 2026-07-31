@@ -1,0 +1,205 @@
+# Project Journal
+
+An append-only, plain-language build log — the story of how this project
+actually got built, task by task, including the *process* decisions and not
+just the technical ones. `docs/DECISIONS.md` is the terse companion to this:
+2-3 lines per task, written for grepping a specific parameter choice later.
+This file is the narrative version, written for a human reading top to
+bottom, including anyone (including future-me) trying to reproduce not just
+the code but the way it got built.
+
+**Rule for this file: never edit or delete a past entry. Only add new ones
+at the bottom, in the order they happened.**
+
+---
+
+## Why this project is built one small task at a time
+
+Before any code existed, the working agreement in `CLAUDE.md` set a
+deliberately slow pace: implement exactly **one** unchecked task from
+`TASKS.md` per turn, then stop and report — never chain straight into the
+next task, even when the next step is obvious. Every task has to end in a
+single runnable command that passes or fails; if a task can't be verified
+that way, it gets split until it can. Every module that gets created also
+gets a `scripts/check_*.py` that prints real numbers for a human to actually
+look at — because for an MMM, a green `pytest` run only proves the code
+executes, not that the number it produced is remotely sane. The entire
+premise of building this on fully synthetic data with a known-in-advance
+ground truth (`simulate/truth.py`) is that every stage can be scored against
+the real answer — and that only pays off if a human is actually reading the
+printed numbers along the way, not just the exit code.
+
+That incremental discipline is itself one of this project's decisions, not
+an accident of how the conversation happened to go — and it's the reason
+this journal exists: so the *process*, not only the final repo, is something
+someone else could pick up and repeat.
+
+---
+
+## Phase 0 — Orienting before building anything
+
+Before any simulation code, Phase 0 was about verifying the ground the
+project stands on rather than trusting that scaffolding worked: confirming
+the package actually imports, that a pattern-based naming checker
+(`scripts/check_naming.py`) exists to catch old-codebase-style identifiers
+before they land in a public repo, and that `docs/DESIGN.md` itself is
+internally consistent — its curve-fit spec and its production model spec
+cross-checked against each other and against the rest of the document, with
+no contradictions found.
+
+Phase 0 also caught something purely bookkeeping-related: the actual work
+for tasks 0.1 through 0.5 had already landed in an earlier commit, but the
+checkboxes in `TASKS.md` were never flipped. Fixed by re-running every
+task's stated verify command and only then checking the boxes — a small
+reminder that "done" should mean "the verify command passes today," not
+"someone remembers doing it."
+
+Around this time the repo also went up on GitHub for the first time, named
+`rf-informed-bayesian-mmm` rather than something generic — the reasoning
+being that the name should say what makes this project different from a
+typical MMM repo (Random-Forest-derived priors feeding a Bayesian model),
+not just what domain it's in.
+
+---
+
+## Phase 1 — Building the synthetic world
+
+### 1.1 — The event calendar (`simulate/schedule.py`)
+
+The first real simulation code was the calendar: three seasons of roughly
+250 live events each, not a plain weekly grid. Getting realistic clustering
+— some weeks having several events on one day (national doubleheaders),
+most weeks having none — meant not hand-scripting which days get multiple
+events. Instead, each day's event count is drawn from a Poisson distribution
+whose rate depends on the day of week (low midweek, high Friday/Saturday/
+Sunday), with roughly 18% of weeks per season flagged as "cluster weeks"
+where that rate doubles. The weekday rates needed one round of tuning after
+an initial pass landed at ~196 events/season against a ~250 target — bumped
+up (0.35→0.45 weekday, 1.7→2.2 weekend) until four different random seeds
+consistently landed in the 210-276 range, which reads as normal
+season-to-season variance rather than something broken.
+
+One structural decision worth calling out: `day_idx`, the integer offset
+used everywhere downstream to place an event on the calendar, is **not**
+reset per season. It's a single running count across all three seasons plus
+the 90-day off-season gaps between them, because Phase 1.6's always-on
+adstock needs one continuous daily timeline to decay across — resetting it
+per season would quietly break carryover at every season boundary.
+
+### 1.2 — Ground truth (`simulate/truth.py`)
+
+This is the answer key: a frozen dataclass holding every true parameter the
+data-generating process will use — per-channel adstock decay, Hill
+saturation shape, channel ceilings, seven control coefficients, three season
+intercepts, noise. `CLAUDE.md`'s non-negotiable is that model code can never
+import this file; only tests and evaluation scripts may, because the whole
+point of the synthetic-data approach collapses the moment a model can see
+the answer.
+
+Two design calls worth recording. First, `tentpole_tier` (whether a game is
+a big showcase event) gets a single large scalar coefficient, while
+`broadcaster` (which network aired it) gets a *vector* of coefficients, one
+per network — because `broadcaster` is genuinely nominal (there's no natural
+order to four networks) while `tentpole_tier` is genuinely ordinal, and
+forcing a nominal variable into a single ordered slope would quietly absorb
+variance that isn't really linear. Second, the three event-targeted channels
+(`ctv`, `paid_social`, `paid_search`) get an explicit `alpha = 0.0` rather
+than no adstock parameter at all — because DESIGN.md is explicit that these
+channels get *no* carryover (a "watch tonight" ad only matters tonight), and
+giving them a real, comparable zero lets a later recovery test check that
+the Bayesian model actually learns that zero instead of just never being
+asked about it.
+
+Only one of DESIGN.md's three deliberate "pathologies" belongs in this file:
+`display`'s near-zero true effect (the dead channel everyone suspects but
+that provably does nothing). The other two — `out_of_home`'s low spend
+variance and the `tv_linear`/`ctv` spend correlation — are properties of how
+spend gets generated, not of the truth parameters, so they show up later in
+1.6 and 1.7 instead.
+
+### 1.3 / 1.4 — Adstock and saturation (`transforms.py`)
+
+Two small, sharp functions, deliberately placed outside `simulate/` — this
+file has no dependency on the ground truth and gets reused later by the
+actual Bayesian model, so it needed to be safe for model code to import.
+
+Geometric adstock (carryover: a dollar spent today keeps echoing into future
+days at a decaying rate) turned out to be a single line once framed
+correctly — a causal `np.convolve` of the spend series against a decay
+kernel, truncated to the max lag. Verifying it didn't rely on a round-trip
+property test; it relied on hand-computing a single $10 spike decaying at
+alpha=0.5 (10, 5, 2.5, 1.25, then nothing) and checking the code produced
+exactly that, because the goal here is confidence in the actual numbers, not
+just confidence the function runs.
+
+Hill saturation (diminishing returns as spend rises) was similarly a
+one-line closed form, verified against the one property the formula
+guarantees by construction: spend equal to the half-saturation point `k`
+always produces exactly 0.5.
+
+### 1.5 — Sampling the daily series at event dates
+
+Always-on spend lives on a daily calendar; events happen on specific dates,
+sometimes several at once. `extract_event_level()` samples the adstocked
+daily series at each event's `day_idx` and divides by however many events
+shared that date — the idea being that a single day's broadcast attention
+dilutes across simultaneous events. Verifying this meant pulling two *real*
+days out of the actual generated schedule (one single-event day, one
+triple-event day), forcing both to the exact same underlying daily spend
+value, and printing them side by side — so the only difference visible in
+the output is the dilution itself, not coincidental variation in the
+underlying spend.
+
+### 1.6 — Daily always-on spend, and a threshold that needed re-tuning
+
+Always-on spend for `tv_linear`, `out_of_home`, and `display` needed
+"realistic flighting" — bursts, dark periods, a within-season ramp — which
+didn't have an obvious existing home in the file tree DESIGN.md sketches
+out, so it became its own module, `simulate/spend.py`, mostly to keep
+`dgp.py` (which assembles everything later) from ballooning past the
+project's own ~150-line-per-module guideline.
+
+The interesting part was `out_of_home`'s pathology: it's supposed to have
+low day-to-day variance (long, chunky billboard-style contracts rather than
+bursty campaigns), which is also *why* it's weakly identifiable later — a
+channel that barely moves is hard for any model to pin a response curve to.
+That came from giving it long 60-90 day flights, short 3-8 day dark spells,
+and low noise, versus `tv_linear`'s short, bursty 7-20 day flights with more
+dark time. The first coefficient-of-variation threshold chosen for the
+check script (0.5) turned out to be tighter than what the full calendar
+(including the shared off-season zero blocks) actually produces — real
+runs landed `out_of_home` at ~0.6-0.65 consistently. Rather than force the
+number down artificially, the threshold got moved to 0.8, which still sits
+cleanly below `display`'s ~1.1 and `tv_linear`'s ~1.5 — the point was never
+a specific number, just a real, reproducible gap between the pathological
+channel and the others.
+
+### 1.7 — Event-targeted spend, and finding a correlation that survives the noise
+
+`ctv`, `paid_social`, and `paid_search` needed two things at once: spend
+concentrated on higher tentpole tiers (the deliberate confound the whole
+project exists to measure — planners spend more chasing games that were
+always going to be big), and `ctv` specifically needed to be correlated with
+`tv_linear`'s spend, since in real media planning those two get bought
+together.
+
+The correlation was generated properly rather than faked after the fact — a
+standard bivariate-normal construction (`z_ctv = rho*z_tv +
+sqrt(1-rho^2)*z_noise`) feeding into a lognormal transform for a positive
+spend value. The first attempt, targeting `rho=0.9` with a wide tier
+multiplier spread (up to 9x from regular to championship games), only
+produced a realized Pearson correlation of about 0.40 on the raw dollars —
+the tier multiplier itself is uncorrelated with `tv_linear` (which is
+always-on, unrelated to any specific game's importance), so a wide tier
+spread was adding variance that had nothing to do with TV spend and diluting
+the correlation regardless of how high `rho` was pushed. Sweeping a small
+grid of tier-spread and `rho` combinations found a balance — a narrower
+~3.2x tier spread with `rho=0.9` — that held a stable ~0.54 correlation
+across seeds while keeping the tier concentration still clearly monotonic.
+Neither property got sacrificed for the other; it just took finding the
+right operating point where both hold at once.
+
+---
+
+*(Next entry goes here after the next completed task — see `CLAUDE.md`'s
+working agreement.)*
