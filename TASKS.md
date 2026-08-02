@@ -132,17 +132,21 @@ Scaffold, `.gitignore`, and `pyproject.toml` are already in place (built by
       light hyperparameter search.
       *Verify:* `scripts/fit_forest.py` prints in-sample and holdout MAPE, R²
 
-- [ ] **3.2** PDP per channel.
+- [x] **3.2** PDP per channel.
       *Verify:* `check_pdp.py` saves 6 PDPs and prints the implied response
       range per channel
 
-- [ ] **3.3** ALE for `tv_linear` and `ctv`. Plot PDP and ALE on the same axes.
+- [x] **3.3** ALE for `tv_linear` and `ctv`. Plot PDP and ALE on the same axes.
       *Verify:* `check_ale.py` saves the overlay and prints the max divergence
       between the two curves for the correlated pair
 
-- [ ] **3.4** TreeSHAP — per-channel contribution decomposition.
+- [x] **3.4** TreeSHAP — per-channel contribution decomposition. Also save a
+      SHAP dependence/scatter plot (real spend vs. that event's SHAP value,
+      one dot per event) for `tv_linear` and `ctv`, colored by the other of
+      the pair — the individual-point complement to 3.2/3.3's averaged
+      curves, and a direct way to see the correlation in the scatter itself.
       *Verify:* `check_shap.py` prints SHAP contribution shares **next to true
-      shares** with the gap per channel
+      shares** with the gap per channel, and saves the two dependence plots
 
 - [ ] **3.5** SHAP slices — by broadcaster, season, weekend, margin bin,
       tentpole tier.

@@ -366,6 +366,178 @@ note whenever a result comes in under it, so a future reader (including
 future-me) doesn't mistake a metric quirk for the model having beaten
 randomness itself.
 
+### 3.2 — Watching a predicted flaw actually show up on screen
+
+This project was built, from the very first task, around a specific bet:
+that a flexible model fit to the data would get visibly *fooled* by a
+correlation planted on purpose back in task 1.7 — that money spent on `ctv`
+tends to get spent alongside money spent on `tv_linear`, because in real
+media planning those two get bought together. Partial dependence plots are
+a standard way of asking a fitted model "what do you think happens as I
+turn this one dial, holding everything else fixed" — and they have a known
+weakness: they don't actually hold everything else fixed in any real sense,
+they average over whatever combinations actually occurred in the data. If
+two channels are bought together, sweeping one drags the other along for
+the ride without saying so.
+
+That's not a hypothetical anymore. The chart for `ctv` shows predicted
+viewership climbing by over 1,000,000 (thousand-viewer units) as `ctv`
+spend increases — nearly twenty times larger than the true ceiling that
+channel could possibly produce on its own. The model isn't wrong about the
+data; it's accurately describing a world where high-`ctv` events also
+happen to be high-`tv_linear` events, and quietly handing `tv_linear`'s
+credit to `ctv`. Sitting right next to it, `out_of_home`'s chart is a flat,
+noisy squiggle spanning a tiny range — not because that channel doesn't
+matter to the story, but because task 1.6 deliberately gave it so little
+spend variation that no model, however good, could confidently learn its
+shape from this data. Two completely different failure modes, both
+produced on purpose months (in project time) earlier, both now visible as
+actual pictures instead of assertions in a design document.
+
+The next task is where this gets a real fix rather than just a
+demonstration: ALE, a variant built specifically to not fall for the
+correlated-feature trap, plotted directly against these same PDP curves.
+
+### 3.3 — Chasing a number that looked wrong until it turned into the best finding yet
+
+ALE exists to fix PDP's exact flaw: instead of asking the model about
+combinations that never really happened (high `ctv` paired with low
+`tv_linear`, say), it only ever nudges a channel's spend within a narrow
+neighborhood of games that were already similar to begin with — so it can't
+accidentally invent a scenario that doesn't exist in reality. Plotting it
+directly against the PDP curve from the previous task was supposed to show
+ALE "correcting" PDP's distortion.
+
+For `ctv`, it barely did. The two curves tracked each other closely instead
+of splitting apart the way expected. That turned out to be informative on
+its own: ALE only fully rescues you when the correlation between two
+channels is concentrated in weird, unrealistic combinations. Here, the
+`tv_linear`/`ctv` link is smooth across the *entire* spend range — baked in
+deliberately back in task 1.7 — so even a narrow neighborhood of similar
+`ctv` spend still contains games with correlated `tv_linear` too. ALE
+reduces the confusion; it doesn't erase it, when the entanglement isn't a
+tail phenomenon.
+
+`tv_linear`'s own chart is what actually stopped the task. Both PDP and ALE
+showed spending *more* on TV linear predicting *less* viewership — flatly
+backwards from how the channel was actually built, where it has the
+strongest true positive pull of anything in the simulation. Nothing about
+that was subtle enough to wave away, so it got investigated properly rather
+than written up as some interesting quirk. First move: rule out a
+Random-Forest-specific glitch by fitting the plainest possible
+linear regression on the same inputs — same negative sign showed up there
+too, meaning this wasn't a tree-model artifact, it was something about the
+inputs themselves.
+
+That search turned up a genuine bug: `n_events_on_date` — how many games
+shared a single day, directly relevant since attention on a shared day
+splits between games — had been sitting in the dataset the whole time and
+never made it into the model's feature list back in task 3.1. An honest
+oversight, now fixed. It improved the model's overall accuracy a little.
+It did not fix the backwards sign.
+
+The real answer needed one more link in the chain: `tv_linear` correlates
+with `ctv` (by design, task 1.7). `ctv`, completely separately, correlates
+*very* strongly with `tentpole_tier` (by design, also task 1.7 — spend
+concentrating on the biggest games). And `tentpole_tier` itself has a huge
+real effect on viewership, entered on purpose as the project's central
+confounder all the way back in task 1.2. `tv_linear` has almost no direct
+relationship with `tentpole_tier` at all — but it's one hop away, connected
+through `ctv`. Asked to divide credit among all three at once, the model
+ends up assigning `tv_linear` a negative slice, not because TV spend hurts
+viewership, but as a side effect of being adjacent to a much bigger, better-
+connected confound.
+
+This landed as a better result than the task originally set out to produce.
+The project was built, months of task-time ago, around two separate
+planted pathologies — a correlated pair, and a variable that's both a
+direct cause and a driver of other spend. This is the first moment they
+visibly collided with each other, corrupting a channel that has no direct
+relationship with the real confounder at all. It's also the clearest
+argument yet for why `tentpole_tier` has to be handed to the eventual
+Bayesian model directly, in Phase 5, rather than something a model is
+expected to infer purely from watching where the money went.
+
+### A correction, the same day — the explanation above was tested and didn't survive
+
+The three-way story above was a genuinely reasonable read of the evidence
+at the time: `tv_linear` barely correlates with `tentpole_tier` directly,
+but `ctv` correlates with both, so credit seemed to be leaking through that
+middle connection. It was plausible enough to write down. It was also,
+it turned out, not the real explanation — and the only reason that's known
+now instead of just believed is that the natural next question got asked:
+if holding the tier constant is what should fix this, does it actually fix
+it?
+
+So `tv_linear`'s ALE curve got computed four separate times — once within
+each tentpole tier on its own, instead of one curve mixing all of them
+together. If the tier-chain theory were right, freezing the tier should
+have let `tv_linear`'s real, positive relationship show through in each of
+those four curves. It didn't. All four still sloped the same wrong
+direction, championship-tier games included, where the sample is smallest
+and the theory's leverage should have been most visible.
+
+That negative result is what actually cracked it. Checking how strongly
+`tv_linear` and `ctv` move together *within* a single tier — rather than
+across the whole mixed dataset — showed a correlation of about 0.9, not the
+0.5 pooled number everyone had been reading up to this point. Mixing all
+four tiers together had been *hiding* how tightly linked those two channels
+really are, not revealing it — because tentpole tier adds its own extra
+swing to `ctv` spend that has nothing to do with `tv_linear` at all, and
+averaging over that padding waters down the true relationship underneath
+it. Two channels that correlated with each other that strongly, sitting in
+the same model as separate inputs, is enough on its own to make either
+one's individual credit unstable and land anywhere, sign included — no
+third variable required.
+
+The tentpole-chain theory wasn't a wasted detour. It was a real hypothesis,
+stated plainly, checked against new evidence, and dropped the moment the
+evidence didn't support it — which is a different thing from getting the
+right answer on the first guess, and a more honest one to have on the
+record. Nothing about the earlier entry got deleted or rewritten; it's
+still there, as what was believed before the tier-stratified chart existed
+to check it against.
+
+### 3.4 — A third method, asked to settle what the first two found
+
+TreeSHAP is a fundamentally different technique from PDP and ALE — instead
+of sweeping one channel and averaging, it distributes each individual
+prediction's value fairly across every input feature, event by event, using
+some genuinely elegant game theory (imagine figuring out how much credit
+each player on a team deserves for a win, by checking how the outcome
+would've changed under every possible combination of who's on the field).
+The plan for this task was simple: use that third, independent method to
+either confirm or contradict what PDP and ALE had already been saying about
+`tv_linear` and `ctv`.
+
+The first attempt produced numbers that looked broken — every single media
+channel came back with a SHAP contribution share within a rounding error of
+zero, while the true shares from the data generator were clearly not zero.
+That's not what a bug usually looks like when you check it, though: SHAP
+values carry a strict mathematical guarantee (they have to add up exactly
+to the model's actual prediction), and that guarantee held perfectly. So
+the numbers weren't wrong — the question being asked was subtly different
+from the one intended. SHAP was measuring "how much does this channel's
+*actual* spend push the prediction away from a *typical* game" by default.
+What was wanted was "how much does this channel's actual spend push the
+prediction away from *zero spend on this channel*" — because that's how the
+real, true contribution numbers are defined in this project. Two
+genuinely different questions that happen to produce the same units,
+which is exactly the kind of mismatch that's easy to miss and worth
+catching.
+
+Fixing it meant explicitly telling the SHAP tool to compare every event
+against a version of itself with zero media spend, instead of an average
+event. That single change turned the results from "everything near zero,
+looks broken" into a clean, third confirmation of what the previous two
+tasks had already found — `ctv` credited with roughly 45 percentage points
+more than its real share, `tv_linear` still landing negative, this time
+confirmed all the way down to individual events rather than just an
+averaged curve. Three unrelated methods, three separate implementations,
+one consistent answer. That's about as much confidence as this kind of
+investigation can offer without the ground truth already in hand — which,
+in this project's unusual case, it happens to be.
+
 ---
 
 *(Next entry goes here after the next completed task — see `CLAUDE.md`'s

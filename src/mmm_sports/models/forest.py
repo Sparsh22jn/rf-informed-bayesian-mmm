@@ -39,13 +39,18 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     pd.DataFrame
         One row per event, numeric columns only: raw spend per channel,
         continuous controls, `is_weekend` (0/1), `tentpole_tier_rank`
-        (0-3), and one-hot `broadcaster_*` columns.
+        (0-3), `n_events_on_date`, and one-hot `broadcaster_*` columns.
     """
     features = df[list(SPEND_COLUMNS)].copy()
     for name in CONTINUOUS_CONTROLS:
         features[name] = df[name]
     features["is_weekend"] = df["is_weekend"].astype(int)
     features["tentpole_tier_rank"] = df["tentpole_tier"].cat.codes
+    # n_events_on_date: an analyst always knows the day's schedule. Without
+    # it the model can't see always-on attention dilution (DESIGN.md §4) --
+    # a day's raw spend looks identical whether it aired alone or split
+    # three ways, even though the true per-event exposure differs a lot.
+    features["n_events_on_date"] = df["n_events_on_date"]
     broadcaster_dummies = pd.get_dummies(df["broadcaster"], prefix="broadcaster")
     return pd.concat([features, broadcaster_dummies], axis=1)
 

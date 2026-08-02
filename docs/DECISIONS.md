@@ -285,3 +285,152 @@ MAPE (per `DESIGN.md §4`'s instruction, missed in the first pass) with an
 explanatory note whenever a model's MAPE comes in under it, so this doesn't
 read as the model having beaten irreducible noise anywhere else in the repo
 either.
+
+---
+
+## 2026-08-01 — Task 3.2: PDP per channel
+
+New `models/interpret.py` rather than adding to `forest.py` -- Stage 1's
+full interpretation layer (PDP now, ALE/SHAP/empirical curves across
+3.3-3.6) would push `forest.py` well past the ~150-line module cap if it
+all lived in one file. `interpret.py` only wraps `sklearn.inspection.
+partial_dependence`; `check_pdp.py` loads the model already persisted by
+`fit_forest.py` rather than refitting.
+
+Confirms `DESIGN.md §5`'s predicted pathology directly, not just in theory:
+`ctv`'s PDP implied response range came out at 1175.4 (thousand viewers) --
+**nearly 20x** its true ceiling (`beta_ctv=60`, `truth.py`). PDP averages over
+the *observed* joint distribution of the other features while sweeping
+`ctv`, and because `ctv` and `tv_linear` are correlated by design (task
+1.7), high-`ctv` grid points disproportionately co-occur with high-
+`tv_linear` events in the real data -- PDP silently credits `ctv` with
+`tv_linear`'s effect. `out_of_home`'s PDP, by contrast, is flat noise across
+a ~6-point range on a ~1400 baseline -- correctly reflecting that channel's
+weak identifiability from task 1.6's low-variance flighting. Both are
+exactly the pathologies these channels were built to produce, now visible
+in an actual curve rather than asserted in a docstring. Task 3.3's ALE
+overlay is where the `tv_linear`/`ctv` correction gets measured directly.
+
+---
+
+## 2026-08-01 — Task 3.3: ALE for `tv_linear` and `ctv`
+
+`compute_pdp` reimplemented as a manual sweep-and-average loop (was
+`sklearn.inspection.partial_dependence`) rather than adding a second grid
+mechanism -- ALE needs a custom grid (its own quantile bin edges) to be
+directly comparable to PDP on the same points, and `partial_dependence`'s
+`grid_resolution` path doesn't expose that cleanly. Side effect: sklearn's
+`partial_dependence` silently clips its default grid to the 5th-95th
+percentile; the manual version sweeps the full observed range, so 3.2's
+`ctv` range grew from 702.6 to 1175.4 (thousand viewers, ~20x its true
+ceiling now vs. the earlier ~11x) -- updated 3.2's entry above and
+`JOURNAL.md` to match rather than leave a stale number, since 3.2 hadn't
+been pushed yet.
+
+`ctv`'s PDP and ALE curves track each other closely (max divergence 104.4)
+rather than diverging sharply as expected -- because the `tv_linear`/`ctv`
+correlation (task 1.7) is smooth across the whole spend range, not
+concentrated in extreme/unrealistic combinations, so ALE's local buckets
+still contain correlated neighbors and can't fully separate the two.
+
+**Real finding, investigated rather than shipped as-is:** `tv_linear`'s PDP
+*and* ALE both showed a clearly negative relationship with viewership,
+despite `tv_linear` having the strongest true positive effect of any
+channel (`beta=235`, `truth.py`). Ruled out an RF-specific artifact first
+-- a plain `LinearRegression` on the same features showed the same negative
+sign, so not a tree-model quirk. Found and fixed a real bug along the way:
+`build_features()` (task 3.1) omitted `n_events_on_date` entirely, even
+though it's directly observable and the true always-on contribution is
+diluted by it (`corr(contrib_tv_linear, n_events_on_date) = -0.415`). Added
+it; holdout R² improved 0.805 -> 0.816, but the sign flip persisted, so
+that wasn't the (sole) explanation.
+
+The actual explanation is a three-way *transitive* confound: `tv_linear`
+correlates with `ctv` (0.54, task 1.7), and `ctv` separately correlates very
+strongly with `tentpole_tier` (0.765 -- tier-driven spend concentration,
+also task 1.7), and `tentpole_tier` has a large genuine positive effect on
+viewership (raw correlation 0.48, but a *negative* partial coefficient of
+-138 in the fixed-dummy-trap linear regression -- the tier effect is
+getting absorbed into the correlated spend channels instead). `tv_linear`
+itself correlates with `tentpole_tier` at only 0.036 -- essentially zero,
+direct. It's confounded by proximity, one hop away through `ctv`, not by
+any real relationship of its own. This goes beyond what `DESIGN.md §3`
+explicitly named (the `tv_linear`/`ctv` pair, and `tentpole_tier`'s dual
+direct-effect-plus-spend-driver role, described separately) -- it shows
+those two designed pathologies compounding into a transitive effect neither
+one produces alone, and it's the concrete reason `tentpole_tier` has to be
+an explicit model input in Phase 5's Bayesian model rather than something
+inferred from spend alone.
+
+---
+
+## 2026-08-01 — Correction to the 3.3 entry above: the transitive-confound theory was wrong
+
+Tested the transitive-tentpole-confound theory directly by adding a
+tier-stratified `tv_linear` ALE to `check_ale.py` (computing the curve
+separately within each of the 4 tentpole tiers, holding the tier constant).
+If the theory were right, holding tier fixed should break the chain and let
+`tv_linear`'s true positive slope emerge. It didn't -- all four tiers
+still show `tv_linear` decreasing.
+
+That result pointed at the actual cause: checked `corr(spend_tv_linear,
+spend_ctv)` *within* each tier and found 0.89-0.93 -- noticeably
+**stronger** than the 0.54 pooled correlation reported in 1.7 and 3.3,
+not weaker. Pooling across tiers was diluting the correlation, not
+concentrating it -- tier adds extra variance to `ctv` (via the tier
+multiplier) that has nothing to do with `tv_linear`, which drags the
+pooled correlation down. The tentpole-tier chain in the entry above isn't
+the real mechanism; it was a plausible-looking hypothesis from the pooled
+correlation numbers that a direct test disproved.
+
+**Corrected explanation:** `tv_linear` and `ctv` are severely collinear
+(~0.9, not ~0.5) once tier is accounted for, and both sit in the same
+model as separate predictors. With two predictors that correlated, their
+*individual* coefficients/partial effects become unstable and can land on
+almost any sign while the model's combined fit stays fine -- classic
+multicollinearity, not a multi-hop confound. This is a simpler, single-cause
+story than the previous entry claimed, and it's a more direct hit on
+`DESIGN.md §3`'s actually-designed pathology (the `tv_linear`/`ctv` pair)
+than the transitive version was. Left the earlier entry as written, per
+this file's append-only convention -- this correction is the record of
+having checked it and found it wrong, not a reason to erase what was
+believed at the time.
+
+---
+
+## 2026-08-02 — Task 3.4: TreeSHAP contribution decomposition
+
+`interpret.py` split into `interpret.py` (PDP/ALE) and `interpret_shap.py`
+(TreeSHAP) once adding SHAP pushed it to 167 lines -- past the ~150 cap.
+
+The first version of `compute_shap_values` used `shap.TreeExplainer(model)`
+with no background data, i.e. `tree_path_dependent` perturbation -- the
+library default. Every media channel's SHAP share came back within a point
+of zero, dwarfed by their true shares (tv_linear true 5.5% vs shap 0.3%,
+etc.), which looked like a bug. It wasn't a computation error -- the
+efficiency identity (`sum(mean(shap per feature)) + base_value ==
+mean(prediction)`) checked out exactly -- it was a mismatched baseline.
+`TreeExplainer`'s default background is the *average* event, so a channel's
+SHAP value measures deviation from average spend, not distance from zero.
+`truth.py`'s contributions, by contrast, are defined relative to zero spend
+(`hill_saturation(0) = 0`). Two different reference points, not a
+comparable pair of numbers.
+
+Fixed by adding an interventional-SHAP path: a background set with every
+media spend column forced to zero (other features left at each row's real
+value), matching `truth.py`'s own convention. Hit a `shap` library dtype
+error on the interventional path specifically (`Cannot cast array data
+from dtype('O') to dtype('float64')`) caused by `pd.get_dummies`' `bool`-
+dtype columns -- worked fine for the default path, broke the interventional
+one. Fixed with an explicit `.astype(float)` before constructing the
+background/foreground arrays.
+
+With the zero-spend background, the numbers now read consistently with
+3.2/3.3's findings rather than contradicting them: `ctv` shap=46.6% vs
+true=1.8% (gap +44.8%) -- the same over-attribution PDP showed, now via a
+completely different method. `tv_linear` shap=-1.5% vs true=5.5% (gap
+-7.1%) -- same negative-credit finding as the ALE chart, confirmed again.
+The two SHAP dependence scatters (spend vs. that event's own SHAP value,
+colored by the other channel) show this isn't just a mean-level artifact:
+`tv_linear`'s SHAP values sit at or below zero for essentially every single
+event, not just on average.
