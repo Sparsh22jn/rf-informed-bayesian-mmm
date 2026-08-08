@@ -434,3 +434,63 @@ The two SHAP dependence scatters (spend vs. that event's own SHAP value,
 colored by the other channel) show this isn't just a mean-level artifact:
 `tv_linear`'s SHAP values sit at or below zero for essentially every single
 event, not just on average.
+
+---
+
+## 2026-08-08 — Task 3.5: SHAP slices
+
+Reused `compute_shap_values` with the same zero-spend background from 3.4
+rather than adding new interpretation logic -- 3.5 is a slicing exercise
+over 3.4's output, not a new method, so it stayed a script (no new `src/`
+module). `margin_bin` didn't exist as a column -- built as quartiles of
+`competitiveness` (`closest`/`close`/`wide`/`blowout`), the other four
+slice dimensions were already there.
+
+The `ctv` over-attribution isn't flat across slices -- it climbs
+monotonically with `tentpole_tier`: 43.4% (regular) -> 51.4% (showcase) ->
+54.0% (rivalry) -> 58.6% (championship), against `broadcaster`/`season`/
+`is_weekend`/`margin_bin` all staying within a couple points of each other.
+Directly confirms the misattribution concentrates exactly where the
+`tv_linear`/`ctv` correlation and the tentpole-tier spend concentration
+overlap most (high-tier games get proportionally more of both), rather
+than being a uniform bias across the dataset.
+
+---
+
+## 2026-08-08 — Task 3.6: empirical response curves
+
+New `interpret_curves.py` (not folded into `interpret.py`, which was
+already near budget) -- `compute_empirical_curve` builds one representative
+synthetic event (median for continuous columns; for the `broadcaster_*`
+one-hot group specifically, the single most common level set to 1 rather
+than an independent per-column median, which would otherwise produce an
+invalid state with zero or several levels "on" at once) and sweeps just
+the target channel against that fixed backdrop -- deliberately different
+from 3.2's PDP (which averages over every row) because Phase 4 needs one
+clean curve per channel to fit a Gaussian CDF to, not a marginal average
+already distorted by correlated features.
+
+Baselined the RF curve at its own starting grid point before comparing
+to the true curve (which starts at exactly 0 by construction,
+`hill_saturation(0)=0`) so the two are on the same footing. For
+event-targeted channels the grid's start is the minimum *observed* spend,
+not literally $0 (spend is never exactly zero there), so the baseline is
+an approximation of true zero, not exactly it -- close enough given
+`hill_saturation` at a small fraction of `K` is already near 0 for every
+one of these channels.
+
+A fourth independent method now, and it agrees with the first three: `ctv`
+massively inflated (RF range 0->1274 vs true 6->57), `tv_linear` still
+backwards (RF -172->0 vs true 0->186). New texture beyond the tv_linear/ctv
+pair: `paid_search` recovers the *cleanest* of all six -- tracks the true
+curve closely up to ~$10k then diverges as the grid runs into sparser data,
+consistent with it being the fastest-saturating channel (smallest `K`) so
+most of its true curve sits inside the well-observed low-spend region.
+`paid_social` gets the right direction but undershoots the true ceiling
+substantially and flattens early. `display`'s RF curve drifts to -77 despite
+a true effect near 0 -- read as noise around a genuinely weak signal (the
+whole curve, RF and true alike, is small relative to `tv_linear`/`ctv`'s
+scale), not a story worth a theory the way the `tv_linear`/`ctv` pair was.
+This variation in how well each channel recovers is exactly the texture
+task 4.2 anticipates when it plans to leave one channel's curve fit
+uncovered, falling back to a generic prior.

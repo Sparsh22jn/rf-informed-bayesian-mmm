@@ -148,11 +148,11 @@ Scaffold, `.gitignore`, and `pyproject.toml` are already in place (built by
       *Verify:* `check_shap.py` prints SHAP contribution shares **next to true
       shares** with the gap per channel, and saves the two dependence plots
 
-- [ ] **3.5** SHAP slices — by broadcaster, season, weekend, margin bin,
+- [x] **3.5** SHAP slices — by broadcaster, season, weekend, margin bin,
       tentpole tier.
       *Verify:* `check_shap_slices.py` prints the slice tables
 
-- [ ] **3.6** Empirical response curve per channel: sweep spend, hold others at
+- [x] **3.6** Empirical response curve per channel: sweep spend, hold others at
       observed values, read the RF surface.
       *Verify:* `check_rf_curves.py` saves curves with the **true** curve
       overlaid

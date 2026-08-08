@@ -538,6 +538,65 @@ one consistent answer. That's about as much confidence as this kind of
 investigation can offer without the ground truth already in hand — which,
 in this project's unusual case, it happens to be.
 
+### 3.5 — Asking where the bias hides, not just how big it is
+
+Everything up to this point answered "how wrong is the model, on average,
+across the whole dataset." This task asked a sharper question: is that
+wrongness spread evenly, or does it cluster somewhere specific? Slicing the
+same SHAP numbers from the previous task by broadcaster, season, weekend,
+how close the game was, and tentpole tier was a cheap way to find out —
+no new modeling, just looking at the existing results through five
+different lenses.
+
+Four of those five lenses showed almost nothing — the `ctv` over-crediting
+sat in roughly the same 45-48% range no matter which network aired the
+game, which season it was, whether it was a weekday or weekend, or how
+close the final score was. The fifth lens, tentpole tier, was completely
+different: the bias climbed in a straight, orderly line from 43% on
+ordinary games up to nearly 59% on championship-level games. That's not
+noise — it's the bias tracking exactly the one thing it should track if
+the underlying story is right, since the biggest games are precisely where
+both the planted `ctv` spend concentration and the real `tv_linear` spend
+overlap the most. A confound that's supposed to be worst exactly where the
+theory says it should be worst, and turns out to actually be worst exactly
+there, is about as clean a confirmation as this kind of investigation gets.
+
+### 3.6 — A fourth method, and the last piece of Phase 3
+
+This task closes out Phase 3, and it's built with the *next* phase already
+in mind rather than being one more diagnostic for its own sake. Everything
+so far — PDP, ALE, SHAP — was about understanding how the model behaves
+across the whole dataset at once. What comes next (Phase 4) needs something
+narrower: one clean, well-behaved curve per channel that a simple shape can
+be fit to. So this task builds that directly — instead of asking "what does
+the model predict on average, across every real game," it constructs a
+single representative game (a plausible, typical combination of every
+other input) and only moves one channel's spend against that fixed
+backdrop.
+
+The headline result held up a fourth time, through a genuinely different
+mechanism than the first three: `ctv`'s curve still shoots up far past what
+its true ceiling could ever produce, `tv_linear`'s curve still runs
+backwards. Four unrelated ways of asking the same question, one answer
+every time — at this point that's not a fluke to keep re-verifying, it's a
+settled fact about this model and this data.
+
+What's new here is texture on the other four channels, which the earlier
+tasks mostly treated as a footnote next to the main `tv_linear`/`ctv`
+story. `paid_search` — the fastest-saturating channel by design — turned
+out to recover *better* than any other channel, tracking the true curve
+closely right up until the data thins out at higher spend. `paid_social`
+gets the direction right but consistently undersells how strong the true
+effect is. `display` wanders off in a way that looks like plain noise
+around a signal that's genuinely almost nothing, not a real story worth
+chasing the way `tv_linear` was. That spread — one channel recovering
+cleanly, two badly broken, the rest somewhere in between — is exactly the
+kind of unevenness the project's own plan already expects: the next phase
+is written to leave one channel's curve unfit on purpose, falling back to
+a plain default guess instead of pretending every channel can be trusted
+equally. Phase 3 ends with a full, honest map of which channels that
+should be.
+
 ---
 
 *(Next entry goes here after the next completed task — see `CLAUDE.md`'s
